@@ -46,14 +46,14 @@ const MemoryStore = memoryStore(session);
 const {
   ENABLE_CONFORMANCE,
   ENABLE_HTTPS,
-  RP_ID = 'localhost',
+  RP_ID = 'test.cuu.army',
 } = process.env;
 
 app.use(express.static('./public/'));
 app.use(express.json());
 app.use(
   session({
-    secret: 'webauthn-secret',
+    secret: 'secret123',
     saveUninitialized: true,
     resave: false,
     cookie: {
@@ -88,7 +88,7 @@ export const rpID = RP_ID;
 // This value is set at the bottom of page as part of server initialization (the empty string is
 // to appease TypeScript until we determine the expected origin based on whether or not HTTPS
 // support is enabled)
-export let expectedOrigin = 'http://localhost';
+export let expectedOrigin = 'https://test.cuu.army';
 
 /**
  * 2FA and Passwordless WebAuthn flows expect you to be able to uniquely identify the user that
@@ -121,7 +121,6 @@ app.get('/generate-registration-options', async (req, res) => {
     username,
     devices,
   } = user;
-  console.log(inMemoryUserDeviceDB)
 
   const opts: GenerateRegistrationOptionsOpts = {
     rpName: 'SimpleWebAuthn Example',
@@ -322,7 +321,7 @@ if (ENABLE_HTTPS) {
 } else {
   const host = '127.0.0.1';
   const port = 8000;
-  expectedOrigin = `http://localhost:8000`;
+  expectedOrigin = `https://test.cuu.army`;
 
   http.createServer(app).listen(port, host, () => {
     console.log(`🚀 Server ready at ${expectedOrigin} (${host}:${port})`);
