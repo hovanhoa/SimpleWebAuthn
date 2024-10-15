@@ -38,16 +38,22 @@ import type {
   RegistrationResponseJSON,
 } from '@simplewebauthn/types';
 
+import {
+  decodeCredentialPublicKey
+} from '@simplewebauthn/server/helpers'
+
 import { LoggedInUser } from './example-server';
 
+const db = require('./db');
 const app = express();
 const MemoryStore = memoryStore(session);
 
 const {
   ENABLE_CONFORMANCE,
   ENABLE_HTTPS,
-  RP_ID = 'test.cuu.army',
+  RP_ID = 'localhost',
 } = process.env;
+
 
 app.use(express.static('./public/'));
 app.use(express.json());
@@ -88,7 +94,7 @@ export const rpID = RP_ID;
 // This value is set at the bottom of page as part of server initialization (the empty string is
 // to appease TypeScript until we determine the expected origin based on whether or not HTTPS
 // support is enabled)
-export let expectedOrigin = 'https://test.cuu.army';
+export let expectedOrigin = 'http://localhost';
 
 /**
  * 2FA and Passwordless WebAuthn flows expect you to be able to uniquely identify the user that
@@ -119,11 +125,30 @@ app.get('/generate-registration-options', async (req, res) => {
      * The username can be a human-readable name, email, etc... as it is intended only for display.
      */
     username,
-    devices,
+    devices
   } = user;
 
+  let result;
+  try {
+    const res = await db.query('SELECT * FROM device');
+    result = res.rows
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Internal Server Error');
+  }
+
+  const device: AuthenticatorDevice[] = result.map((item: AuthenticatorDevice) => {
+    return {
+      credentialPublicKey: item.credentialPublicKey,
+      credentialID: item.credentialID,
+      counter: item.counter,
+      transports: item.transports
+    } as AuthenticatorDevice
+  })
+
   console.log("==============")
-  console.log(username, devices)
+  console.log(device)
+
 
   const opts: GenerateRegistrationOptionsOpts = {
     rpName: 'SimpleWebAuthn Example',
@@ -208,6 +233,20 @@ app.post('/verify-registration', async (req, res) => {
         counter,
         transports: body.response.transports,
       };
+
+
+      const pubkeyString = btoa(String.fromCharCode(...credentialPublicKey));
+      let result;
+      try {
+        const res = await db.query('INSERT INTO device (credentialpublicKey, credentialid, counter, transports) VALUES ($1, $2, $3, $4)',
+          [pubkeyString, credentialID, counter, body.response.transports]
+        );
+        result = res.rows
+      } catch (err) {
+        console.error(err);
+        res.status(500).send('Internal Server Error');
+      }
+
       user.devices.push(newDevice);
     }
   }
@@ -324,7 +363,7 @@ if (ENABLE_HTTPS) {
 } else {
   const host = '127.0.0.1';
   const port = 8000;
-  expectedOrigin = `https://test.cuu.army`;
+  expectedOrigin = `http://localhost:8000`;
 
   http.createServer(app).listen(port, host, () => {
     console.log(`🚀 Server ready at ${expectedOrigin} (${host}:${port})`);
