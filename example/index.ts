@@ -122,7 +122,8 @@ app.get('/generate-registration-options', async (req, res) => {
     devices,
   } = user;
 
-  console.log(inMemoryUserDeviceDB)
+  console.log("==============")
+  console.log(username, devices)
 
   const opts: GenerateRegistrationOptionsOpts = {
     rpName: 'SimpleWebAuthn Example',
