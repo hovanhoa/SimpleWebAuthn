@@ -38,10 +38,6 @@ import type {
   RegistrationResponseJSON,
 } from '@simplewebauthn/types';
 
-import {
-  decodeCredentialPublicKey
-} from '@simplewebauthn/server/helpers'
-
 import { LoggedInUser } from './example-server';
 
 const db = require('./db');
@@ -54,6 +50,21 @@ const {
   RP_ID = 'localhost',
 } = process.env;
 
+function base64ToUint8Array(base64String: string) {
+  // Decode the base64 string into a binary string
+  const binaryString = atob(base64String);
+  
+  // Create a Uint8Array with the same length as the binary string
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  
+  // Assign each character code to the Uint8Array
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  
+  return bytes;
+}
 
 app.use(express.static('./public/'));
 app.use(express.json());
@@ -124,10 +135,10 @@ app.get('/generate-registration-options', async (req, res) => {
     /**
      * The username can be a human-readable name, email, etc... as it is intended only for display.
      */
-    username,
-    devices
+    username
   } = user;
 
+  // CUSTOMIZE: Retrive devices from database and exclude credentials
   let result;
   try {
     const res = await db.query('SELECT * FROM device');
@@ -137,17 +148,15 @@ app.get('/generate-registration-options', async (req, res) => {
     res.status(500).send('Internal Server Error');
   }
 
-  const device: AuthenticatorDevice[] = result.map((item: AuthenticatorDevice) => {
+  const devices: AuthenticatorDevice[] = result.map((item: any) => {
     return {
-      credentialPublicKey: item.credentialPublicKey,
-      credentialID: item.credentialID,
+      credentialPublicKey: item.credentialpublickey,
+      credentialID: item.credentialid,
       counter: item.counter,
       transports: item.transports
     } as AuthenticatorDevice
   })
-
-  console.log("==============")
-  console.log(device)
+  // END CUSTOMIZE
 
 
   const opts: GenerateRegistrationOptionsOpts = {
@@ -221,7 +230,27 @@ app.post('/verify-registration', async (req, res) => {
   if (verified && registrationInfo) {
     const { credentialPublicKey, credentialID, counter } = registrationInfo;
 
-    const existingDevice = user.devices.find((device) => device.credentialID === credentialID);
+    // CUSTOMIZE
+    let result;
+    try {
+      const res = await db.query('SELECT * FROM device');
+      result = res.rows
+    } catch (err) {
+      console.error(err);
+      res.status(500).send('Internal Server Error');
+    }
+
+    const devices: AuthenticatorDevice[] = result.map((item: any) => {
+      return {
+        credentialPublicKey: item.credentialpublickey,
+        credentialID: item.credentialid,
+        counter: item.counter,
+        transports: item.transports
+      } as AuthenticatorDevice
+    })
+    // END CUSTOMIZE
+
+    const existingDevice = devices.find((device) => device.credentialID === credentialID);
 
     if (!existingDevice) {
       /**
@@ -235,6 +264,7 @@ app.post('/verify-registration', async (req, res) => {
       };
 
 
+      // CUSTOMIZE: Add device into database
       const pubkeyString = btoa(String.fromCharCode(...credentialPublicKey));
       let result;
       try {
@@ -246,6 +276,7 @@ app.post('/verify-registration', async (req, res) => {
         console.error(err);
         res.status(500).send('Internal Server Error');
       }
+      // END CUSTOMIZE
 
       user.devices.push(newDevice);
     }
@@ -262,10 +293,28 @@ app.post('/verify-registration', async (req, res) => {
 app.get('/generate-authentication-options', async (req, res) => {
   // You need to know the user by this point
   const user = inMemoryUserDeviceDB[loggedInUserId];
+  
+  let result;
+  try {
+    const res = await db.query('SELECT * FROM device');
+    result = res.rows
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Internal Server Error');
+  }
+
+  const devices: AuthenticatorDevice[] = result.map((item: any) => {
+    return {
+      credentialPublicKey: base64ToUint8Array(item.credentialpublickey),
+      credentialID: item.credentialid,
+      counter: item.counter,
+      transports: item.transports
+    } as AuthenticatorDevice
+  })
 
   const opts: GenerateAuthenticationOptionsOpts = {
     timeout: 60000,
-    allowCredentials: user.devices.map((dev) => ({
+    allowCredentials: devices.map((dev) => ({
       id: dev.credentialID,
       type: 'public-key',
       transports: dev.transports,
@@ -292,6 +341,7 @@ app.get('/generate-authentication-options', async (req, res) => {
 
 app.post('/verify-authentication', async (req, res) => {
   const body: AuthenticationResponseJSON = req.body;
+  console.log(body)
 
   const user = inMemoryUserDeviceDB[loggedInUserId];
 
@@ -299,7 +349,27 @@ app.post('/verify-authentication', async (req, res) => {
 
   let dbAuthenticator;
   // "Query the DB" here for an authenticator matching `credentialID`
-  for (const dev of user.devices) {
+  let result;
+  try {
+    const res = await db.query('SELECT * FROM device');
+    result = res.rows
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Internal Server Error');
+  }
+
+  const devices: AuthenticatorDevice[] = result.map((item: any) => {
+    return {
+      credentialPublicKey: base64ToUint8Array(item.credentialpublickey),
+      credentialID: item.credentialid,
+      counter: item.counter,
+      transports: item.transports
+    } as AuthenticatorDevice
+  })
+
+
+  for (const dev of devices) {
+    console.log(dev.credentialID, body.id)
     if (dev.credentialID === body.id) {
       dbAuthenticator = dev;
       break;
@@ -331,9 +401,12 @@ app.post('/verify-authentication', async (req, res) => {
 
   const { verified, authenticationInfo } = verification;
 
+  console.log(verified)
   if (verified) {
+    console.log("update counter")
     // Update the authenticator's counter in the DB to the newest count in the authentication
     dbAuthenticator.counter = authenticationInfo.newCounter;
+    console.log(authenticationInfo.newCounter)
   }
 
   req.session.currentChallenge = undefined;
