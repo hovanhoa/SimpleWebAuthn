@@ -1,5 +1,19 @@
 version: "3"
 services:
+  app:
+    image: webauthn
+    build: .
+    container_name: webauthn
+    ports:
+      - 8000:8000
+    volumes:
+      - ../webauthn:/app/webauthn
+    depends_on:
+      - postgres
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 300m
   postgres:
     image: postgres:14.4-alpine
     environment:

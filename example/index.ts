@@ -47,7 +47,7 @@ const MemoryStore = memoryStore(session);
 const {
   ENABLE_CONFORMANCE,
   ENABLE_HTTPS,
-  RP_ID = 'test.cuu.army',
+  RP_ID = 'localhost',
 } = process.env;
 
 function base64ToUint8Array(base64String: string) {
@@ -105,7 +105,7 @@ export const rpID = RP_ID;
 // This value is set at the bottom of page as part of server initialization (the empty string is
 // to appease TypeScript until we determine the expected origin based on whether or not HTTPS
 // support is enabled)
-export let expectedOrigin = 'https://test.cuu.army';
+export let expectedOrigin = 'http://localhost:8000';
 
 /**
  * 2FA and Passwordless WebAuthn flows expect you to be able to uniquely identify the user that
@@ -403,10 +403,17 @@ app.post('/verify-authentication', async (req, res) => {
 
   console.log(verified)
   if (verified) {
-    console.log("update counter")
     // Update the authenticator's counter in the DB to the newest count in the authentication
     dbAuthenticator.counter = authenticationInfo.newCounter;
-    console.log(authenticationInfo.newCounter)
+    try {
+      const res = await db.query('UPDATE device SET counter = counter + 1 WHERE credentialid = $1',
+        [dbAuthenticator.credentialID]
+      );
+      result = res.rows
+    } catch (err) {
+      console.error(err);
+      res.status(500).send('Internal Server Error');
+    }
   }
 
   req.session.currentChallenge = undefined;
@@ -436,7 +443,7 @@ if (ENABLE_HTTPS) {
 } else {
   const host = '127.0.0.1';
   const port = 8000;
-  expectedOrigin = `https://test.cuu.army`;
+  expectedOrigin = `http://localhost:8000`;
 
   http.createServer(app).listen(port, host, () => {
     console.log(`🚀 Server ready at ${expectedOrigin} (${host}:${port})`);
