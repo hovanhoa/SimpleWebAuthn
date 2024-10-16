@@ -405,15 +405,6 @@ app.post('/verify-authentication', async (req, res) => {
   if (verified) {
     // Update the authenticator's counter in the DB to the newest count in the authentication
     dbAuthenticator.counter = authenticationInfo.newCounter;
-    try {
-      const res = await db.query('UPDATE device SET counter = counter + 1 WHERE credentialid = $1',
-        [dbAuthenticator.credentialID]
-      );
-      result = res.rows
-    } catch (err) {
-      console.error(err);
-      res.status(500).send('Internal Server Error');
-    }
   }
 
   req.session.currentChallenge = undefined;
