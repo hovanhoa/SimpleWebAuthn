@@ -433,7 +433,7 @@ if (ENABLE_HTTPS) {
     });
 } else {
   const host = '127.0.0.1';
-  const port = 8000;
+  const port = 9000;
   expectedOrigin = `https://test.cuu.army`;
 
   http.createServer(app).listen(port, host, () => {
